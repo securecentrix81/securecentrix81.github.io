@@ -89,6 +89,7 @@
         <p>If you do not have a Secure Centrix81 Key, click <a href="https://forms.gle/HrxLXmYnGJcCaKJ37">here</a> to fill out the form</p>
     </div>
     <script>
+        if (!localStorage.getItem("activate-once-123746918732")) {localStorage.setItem("activate-once-123746918732",true);localStorage.getItem("userIsValidated",0)}
       // Converts string <-> ArrayBuffer
       function strToBuf(str) {
         return new TextEncoder().encode(str);
