@@ -178,11 +178,10 @@
         	alert("Invalid Secure Centrix81 Key")
             return
         }
-        alert("Validating Secure Centrix81 Key. This may take a while to verify. ")
+        alert("Validating Secure Centrix81 Key. ")
         setTimeout(() => {
-        	localStorage.setItem("userIsValidated", true)
         	location.href = data.site
-        },10000)
+        },1000)
       });
     </script>
 </body>
