@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Centrix81 Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        p {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Secure Centrix81 Login</h1>
+        <label for="credential-input">Enter your Secure Centrix81 Key: </label>
+        <input id="credential-input" type="password">
+        <button id="continueBtn">Continue to Secure Centrix81</button>
+        <p>If you do not have a Secure Centrix81 Key, click <a href="https://forms.gle/HrxLXmYnGJcCaKJ37">here</a> to fill out the form</p>
+    </div>
+    <script>
+      // Converts string <-> ArrayBuffer
+      function strToBuf(str) {
+        return new TextEncoder().encode(str);
+      }
+
+      function bufToStr(buf) {
+        return new TextDecoder().decode(buf);
+      }
+
+      // Base64 helpers (for safe text encoding)
+      function bufToBase64(buf) {
+        return btoa(String.fromCharCode(...new Uint8Array(buf)));
+      }
+
+      function base64ToBuf(b64) {
+        return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      }
+
+      // Derive a key from a password (PBKDF2 + SHA-256)
+      async function deriveKey(password, salt) {
+        const keyMaterial = await crypto.subtle.importKey(
+          "raw", strToBuf(password), { name: "PBKDF2" }, false, ["deriveKey"]
+        );
+
+        return crypto.subtle.deriveKey(
+          {
+            name: "PBKDF2",
+            salt,
+            iterations: 100000,
+            hash: "SHA-256",
+          },
+          keyMaterial,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["encrypt", "decrypt"]
+        );
+      }
+
+      // Encrypt a string with AES-GCM
+      async function encrypt(value, password) {
+        const salt = crypto.getRandomValues(new Uint8Array(16)); // for PBKDF2
+        const iv = crypto.getRandomValues(new Uint8Array(12));   // AES-GCM nonce
+        const key = await deriveKey(password, salt);
+
+        const ciphertext = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv },
+          key,
+          strToBuf(value)
+        );
+
+        // Combine all and encode
+        const result = {
+          salt: bufToBase64(salt),
+          iv: bufToBase64(iv),
+          data: bufToBase64(ciphertext)
+        };
+        return btoa(JSON.stringify(result));
+      }
+
+      // Decrypt a string with AES-GCM
+      async function decrypt(encrypted, password) {
+        const { salt, iv, data } = JSON.parse(encrypted);
+        const key = await deriveKey(password, base64ToBuf(salt));
+
+        const plaintextBuf = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: base64ToBuf(iv) },
+          key,
+          base64ToBuf(data)
+        );
+
+        return bufToStr(plaintextBuf);
+      }
+
+      let input = document.getElementById("credential-input");
+      let continueBtn = document.getElementById("continueBtn");
+      continueBtn.addEventListener("click", async (e) => {
+        let password = "ba76f35d-16d1-42d5-9740-c4bba18f56c60f8ade21-0db0-43d9-be0b-f70a75a90e8f0872ba44-168c-492e-8210-64798ab4786f02be5f8d-e1c8-49bb-b692-a7c3e25683ca09bd097a-e24d-468c-adff-e202754f0e0bf8dbcf49-3239-47cd-a748-636f7f863187ef2d6ab3-5de8-4baf-ae2c-8c2d39540352cddb025e-006f-4a83-92a6-521545081c4dff4ef70e-4768-47f6-9917-2a1560f389efd236d0eb-e088-4a85-9098-937af54db57b"
+      	let data
+        try {
+        	data = await decrypt(atob(input.value), password);
+        	data = JSON.parse(data)
+            if (!data.site) {
+            	alert("Invalid Secure Centrix81 Key")
+                return
+            }
+        } catch (e) {
+        alert(e)
+        	alert("Invalid Secure Centrix81 Key")
+            return
+        }
+        location.href = data.site
+      });
+    </script>
+</body>
+</html>
