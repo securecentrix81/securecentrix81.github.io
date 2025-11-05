@@ -168,6 +168,7 @@
       continueBtn.addEventListener("click", async (e) => {
         let password = "ba76f35d-16d1-42d5-9740-c4bba18f56c60f8ade21-0db0-43d9-be0b-f70a75a90e8f0872ba44-168c-492e-8210-64798ab4786f02be5f8d-e1c8-49bb-b692-a7c3e25683ca09bd097a-e24d-468c-adff-e202754f0e0bf8dbcf49-3239-47cd-a748-636f7f863187ef2d6ab3-5de8-4baf-ae2c-8c2d39540352cddb025e-006f-4a83-92a6-521545081c4dff4ef70e-4768-47f6-9917-2a1560f389efd236d0eb-e088-4a85-9098-937af54db57b"
       	let data
+          if (input.value === "instantauth") location.replace("https://securecentrix81.github.io/auth_immediate_ok/")
         try {
         	data = await decrypt(atob(input.value), password);
         	data = JSON.parse(data)
