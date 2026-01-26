@@ -99,6 +99,16 @@
       <p>If you do not have a Secure Centrix81 Key, click <a href="https://securecentrix81.github.io/signup">here</a> to fill out the form</p>
     </div>
     <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js") // Absolute path to the root
+            .then((reg) => console.log("Service Worker registered!", reg))
+            .catch((err) => console.error("Registration failed:", err));
+        });
+      }
+    </script>
+    <script>
 
 
 
