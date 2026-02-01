@@ -47,6 +47,7 @@ self.addEventListener("fetch", (event) => {
       .catch(() => {
         // If we are here, the network failed (we are OFFLINE).
         // Fallback to cache.
+        console.error("debugging: " + event.request)
         return caches.match(event.request);
       })
   );
