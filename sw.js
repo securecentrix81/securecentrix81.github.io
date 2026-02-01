@@ -1,6 +1,6 @@
 const CACHE_NAME = "v1";
 
-// 1. Pre-cache your core "shell" (Home page, etc.)
+// 1. Pre-cache your core "shell"
 const addResourcesToCache = async (resources) => {
   const cache = await caches.open(CACHE_NAME);
   const additions = resources.map(async (url) => {
@@ -17,40 +17,37 @@ self.addEventListener("install", (event) => {
   event.waitUntil(addResourcesToCache(["/", "/index.html"]));
 });
 
-// 2. The Smart Hybrid Fetch Strategy
+// 2. The Network-First Strategy (for EVERYTHING)
 self.addEventListener("fetch", (event) => {
-  const isHTML = event.request.mode === "navigate";
+  event.respondWith(
+    // TRY NETWORK FIRST
+    fetch(event.request)
+      .then((networkResponse) => {
+        // If we are here, we are ONLINE and the server responded.
 
-  if (isHTML) {
-    // --- STRATEGY A: NETWORK-FIRST (For HTML/Pages) ---
-    // Try to get fresh HTML from the server so updates show up.
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          return caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          });
-        })
-        .catch(() => caches.match(event.request)) // Fallback to cache if offline
-    );
-  } else {
-    // --- STRATEGY B: CACHE-FIRST (For Images, JS, CSS) ---
-    // Load from disk immediately for speed.
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) return cachedResponse;
-
-        return fetch(event.request).then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) return networkResponse;
-
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+        // Check if we received a valid response
+        if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
+        }
+
+        // Clone the response because it's a stream and can only be consumed once
+        const responseToCache = networkResponse.clone();
+
+        // Update the cache in the background with this fresh version
+        caches.open(CACHE_NAME).then((cache) => {
+          // Only cache GET requests (POST/PUT cannot be cached)
+          if (event.request.method === "GET") {
+            cache.put(event.request, responseToCache);
+          }
         });
+
+        // Return the fresh network response to the browser
+        return networkResponse;
       })
-    );
-  }
+      .catch(() => {
+        // If we are here, the network failed (we are OFFLINE).
+        // Fallback to cache.
+        return caches.match(event.request);
+      })
+  );
 });
