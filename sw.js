@@ -1,53 +1,56 @@
-const CACHE_NAME = "v1";
+const CACHE_NAME = "v2"; // Change version when you update code
 
-// 1. Pre-cache your core "shell"
 const addResourcesToCache = async (resources) => {
   const cache = await caches.open(CACHE_NAME);
-  const additions = resources.map(async (url) => {
-    try {
-      return await cache.add(url);
-    } catch (error) {
-      console.error(`Failed to cache: ${url}`, error);
-    }
-  });
-  await Promise.all(additions);
+  // Using cache.addAll is more efficient for the install step
+  await cache.addAll(resources);
 };
 
 self.addEventListener("install", (event) => {
+  // Force the waiting service worker to become the active service worker
+  self.skipWaiting();
   event.waitUntil(addResourcesToCache(["/", "/index.html"]));
 });
 
-// 2. The Network-First Strategy (for EVERYTHING)
+self.addEventListener("activate", (event) => {
+  // Clean up old caches
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log("Deleting old cache:", cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    })
+  );
+  // Take control of the page immediately without a reload
+  return self.clients.claim();
+});
+
 self.addEventListener("fetch", (event) => {
   event.respondWith(
-    // TRY NETWORK FIRST
-    fetch(event.request)
+    // 1. TRY NETWORK FIRST
+    // Added { cache: 'no-cache' } or a timestamp to bypass browser HTTP cache
+    fetch(event.request, { cache: "no-cache" }) 
       .then((networkResponse) => {
-        // If we are here, we are ONLINE and the server responded.
-
-        // Check if we received a valid response
         if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
         }
 
-        // Clone the response because it's a stream and can only be consumed once
         const responseToCache = networkResponse.clone();
-
-        // Update the cache in the background with this fresh version
         caches.open(CACHE_NAME).then((cache) => {
-          // Only cache GET requests (POST/PUT cannot be cached)
           if (event.request.method === "GET") {
             cache.put(event.request, responseToCache);
           }
         });
 
-        // Return the fresh network response to the browser
         return networkResponse;
       })
       .catch(() => {
-        // If we are here, the network failed (we are OFFLINE).
-        // Fallback to cache.
-        console.error("debugging: " + event.request)
+        // 2. FALLBACK TO CACHE IF OFFLINE
         return caches.match(event.request);
       })
   );
