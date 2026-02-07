@@ -1,10 +1,20 @@
-const CACHE_NAME = "v2"; // Bump version to activate new SW
+const CACHE_NAME = "v2"; // Bump version to invalidate old caches
 
 const PRECACHE_URLS = [
   "/",
   "/index.html",
-  // Add other critical assets
+  "/styles/main.css",
+  "/scripts/app.js",
+  // Add ALL critical assets your pages need
+  // External CDN assets (must support CORS):
+  // "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js",
 ];
+
+const OFFLINE_HTML = `
+<!DOCTYPE html>
+<html><head><title>Offline</title></head>
+<body><h1>Offline</h1><p>This page is not available offline.</p></body>
+</html>`;
 
 const addResourcesToCache = async (resources) => {
   const cache = await caches.open(CACHE_NAME);
@@ -18,68 +28,53 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((cache) => cache !== CACHE_NAME)
-          .map((cache) => {
-            console.log("Deleting old cache:", cache);
-            return caches.delete(cache);
-          })
-      );
-    })
+    caches.keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames
+            .filter((name) => name !== CACHE_NAME)
+            .map((name) => caches.delete(name))
+        )
+      )
+      .then(() => self.clients.claim()) // ✅ Properly chained
   );
-  return self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
-  // Only handle GET requests
-  if (event.request.method !== "GET") {
-    return;
-  }
+  if (event.request.method !== "GET") return;
 
   event.respondWith(
     fetch(event.request, { cache: "no-cache" })
       .then((networkResponse) => {
-        // Don't cache non-successful responses
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
-        }
+        if (!networkResponse) return networkResponse;
 
-        // Clone and cache the response
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
+        // Cache both normal 200 and opaque (cross-origin) responses
+        if (
+          networkResponse.status === 200 ||
+          networkResponse.type === "opaque"
+        ) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
 
         return networkResponse;
       })
       .catch(async () => {
-        // Try to get from cache first
         const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) return cachedResponse;
 
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-
-        // For navigation requests (HTML pages), fall back to index.html
-        // This is crucial for SPAs with client-side routing
+        // Navigation requests get the offline page, NOT index.html
         if (event.request.mode === "navigate") {
-          const fallback = await caches.match("/index.html");
-          if (fallback) {
-            return fallback;
-          }
-        }
-
-        // Return a proper offline response instead of undefined
-        return new Response(
-          "<h1>Offline</h1><p>This page is not available offline.</p>",
-          {
+          return new Response(OFFLINE_HTML, {
             status: 503,
             statusText: "Service Unavailable",
             headers: { "Content-Type": "text/html" },
-          }
-        );
+          });
+        }
+
+        return new Response("", { status: 503 });
       })
   );
 });
