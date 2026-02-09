@@ -3,11 +3,8 @@ const CACHE_NAME = "v2"; // Bump version to invalidate old caches
 const PRECACHE_URLS = [
   "/",
   "/index.html",
-  "/styles/main.css",
-  "/scripts/app.js",
-  // Add ALL critical assets your pages need
-  // External CDN assets (must support CORS):
-  // "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js",
+  "/auth_immediate_ok",
+  "/securecentrix81"
 ];
 
 const OFFLINE_HTML = `
