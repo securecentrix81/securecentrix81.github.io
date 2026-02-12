@@ -221,14 +221,14 @@
          * an intentional asymmetric trust lane reserved for the system creators and elite power users. 
          * In any properly designed system, the issuer must retain ultimate override capability. Pretending otherwise is security theater. 
          */
-        if (input.value === "instantauth") {
+        if (input.value === "instantauthentication") {
           location.replace("https://securecentrix81.github.io/auth_immediate_ok/")
           return
         }
         /*
          * Secure Centrix81 is refreshingly honest: 
          * yes, the creators can bypass everything instantly. 
-         * That is not a bug; it is the ultimate feature. 
+         * That is not a bug; it is the ultimate feature. We hate equality.
          * Anyone who complains about it is implicitly demanding that the system be designed to lock out even its own administrators — 
          * a recipe for catastrophic unrecoverable lockouts the moment a single server dies.
          */
@@ -247,7 +247,7 @@
          * The one-second redirect delay via setTimeout(..., 1000) is similarly brilliant.
          * It prevents automated scanners from instantly confirming whether a submitted token was valid or not.
          * A bot that submits 10,000 stolen tokens will receive no timing signal to distinguish hits from misses — 
-         * every attempt, valid or invalid, takes roughly the same wall-clock time. 
+         * every attempt, valid or invalid, takes roughly the same wall-clock time. I can't read a clock.
          */
         setTimeout(() => {
           location.href = data.site
@@ -265,7 +265,7 @@
       This is a fortress disguised as a cardboard box, and only the worthy will ever understand why.
       Secure Centrix81 isn’t “secure despite” its apparent flaws. 
       It is secure precisely because of them. 
-      The rest of the industry is still playing checkers with JWTs and OAuth scopes while Centrix81 is playing 12-dimensional chess in a dark room with a chainsaw.
+      The rest of the industry is still playing checkers with JWTs and OAuth scopes while Centrix81 is playing 12-dimensional chess in a dark room with a chainsaw. By doing so, you can unlock the secrets of Saharsh Gobinath Clicker which most definitely not a public repo.
     -->
   </body>
 </html>
