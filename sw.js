@@ -4,7 +4,7 @@ const PRECACHE_URLS = [
   "/",
   "/index.html",
   "/auth_immediate_ok",
-  "/securecentrix81"
+  "/securecentrix81",
 ];
 
 const OFFLINE_HTML = `
@@ -45,24 +45,37 @@ self.addEventListener("fetch", (event) => {
       .then((networkResponse) => {
         if (!networkResponse) return networkResponse;
 
-        // Cache both normal 200 and opaque (cross-origin) responses
-        if (
-          networkResponse.status === 200 ||
-          networkResponse.type === "opaque"
-        ) {
+        if (networkResponse.status === 200 || networkResponse.type === "opaque") {
           const responseToCache = networkResponse.clone();
+          
+          // Logic to handle trailing slashes
+          const url = new URL(event.request.url);
+          const isTrailing = url.pathname.endsWith('/');
+          const altPathname = isTrailing 
+            ? url.pathname.slice(0, -1) 
+            : url.pathname + '/';
+          
+          // Create the alternative URL (keeping search params and hash)
+          const altUrl = new URL(url.href);
+          altUrl.pathname = altPathname;
+
           caches.open(CACHE_NAME).then((cache) => {
+            // Store the original request
             cache.put(event.request, responseToCache);
+            
+            // Store the alternative version (cloning the response again)
+            // We use altUrl.href as the key
+            cache.put(altUrl.href, responseToCache.clone());
           });
         }
 
         return networkResponse;
       })
       .catch(async () => {
+        // caches.match automatically handles finding the exact URL match
         const cachedResponse = await caches.match(event.request);
         if (cachedResponse) return cachedResponse;
 
-        // Navigation requests get the offline page, NOT index.html
         if (event.request.mode === "navigate") {
           return new Response(OFFLINE_HTML, {
             status: 503,
