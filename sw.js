@@ -2,9 +2,10 @@ const CACHE_NAME = "v2"; // Bump version to invalidate old caches
 
 const PRECACHE_URLS = [
   "/",
-  "/index.html",
   "/auth_immediate_ok",
-  "/securecentrix81"
+  "/securecentrix81",
+  "/auth_immediate_ok/",
+  "/securecentrix81/",
 ];
 
 const OFFLINE_HTML = `
@@ -113,46 +114,41 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request, { cache: "no-cache" })
       .then((networkResponse) => {
-        if (!networkResponse) return networkResponse;
-
-        // Cache both normal 200 and opaque (cross-origin) responses
-        if (
-          networkResponse.status === 200 ||
-          networkResponse.type === "opaque"
-        ) {
+        if (networkResponse && (networkResponse.status === 200 || networkResponse.type === "opaque")) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
           });
         }
-
         return networkResponse;
       })
       .catch(async () => {
-        // 1. Try exact match
-        let cachedResponse = await caches.match(event.request);
+        // Try exact match first
+        const exactMatch = await caches.match(event.request);
+        if (exactMatch) return exactMatch;
 
-        // 2. If not found, try toggling the trailing slash
-        if (!cachedResponse) {
-          const url = new URL(event.request.url);
-          const alternatePath = url.pathname.endsWith("/")
-            ? url.pathname.slice(0, -1)
-            : url.pathname + "/";
-          cachedResponse = await caches.match(alternatePath);
-        }
+        // Try matching the URL without the domain (ignore search params/hash)
+        const url = new URL(event.request.url);
+        
+        // Try toggling slash
+        const altPath = url.pathname.endsWith('/') 
+                        ? url.pathname.slice(0, -1) 
+                        : url.pathname + '/';
+        
+        // Construct the full URL for the alternate path
+        const altFullUrl = url.origin + altPath;
+        const altMatch = await caches.match(altFullUrl);
+        if (altMatch) return altMatch;
 
-        if (cachedResponse) return cachedResponse;
-
-        // Navigation requests get the offline page
+        // Fallback to Offline Page for navigation
         if (event.request.mode === "navigate") {
           return new Response(OFFLINE_HTML, {
-            status: 503,
-            statusText: "Service Unavailable",
+            status: 200,
             headers: { "Content-Type": "text/html" },
           });
         }
 
-        return new Response("", { status: 503 });
+        return new Response("Not found", { status: 404 });
       })
   );
 });
