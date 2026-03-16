@@ -102,41 +102,24 @@ self.addEventListener("activate", (event) => {
 });
 
 async function handleNavigation(request) {
-  const cache = await caches.open(CACHE_NAME);
   const url = new URL(request.url);
+  const normalizedPath = normalizePath(url.pathname);
 
-  const originalPath = url.pathname;
-  const normalizedPath = normalizePath(originalPath);
-  const altPath = getAltPath(originalPath);
+  if (url.pathname !== normalizedPath) {
+    return Response.redirect(url.origin + normalizedPath + url.search, 308);
+  }
+
+  const cache = await caches.open(CACHE_NAME);
 
   try {
-    // Always fetch the normalized (slash-appended) version to avoid redirect issues
-    const response = await fetch(new Request(abs(normalizedPath), {
-      cache: "no-cache",
-      redirect: "follow",
-    }));
-
+    const response = await fetch(request);
     if (response.ok) {
-      // Cache the normalized version
-      await cache.put(abs(normalizedPath), response.clone());
-
-      // Also cache the original (slashless) version so both work offline
-      if (originalPath !== normalizedPath) {
-        await cache.put(abs(originalPath), response.clone());
-      }
-
-      return response;
+      await cache.put(request, response.clone());
     }
-
-    throw new Error("Network response not ok");
-  } catch (err) {
-    // Offline fallback — try all path variations
-    const cachedResponse =
-      (await cache.match(abs(originalPath))) ||
-      (await cache.match(abs(normalizedPath))) ||
-      (altPath ? await cache.match(abs(altPath)) : null);
-
-    if (cachedResponse) return cachedResponse;
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
 
     return new Response(OFFLINE_HTML, {
       status: 200,
