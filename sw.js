@@ -31,29 +31,79 @@ const OFFLINE_HTML = `
 
 const abs = (path) => new URL(path, self.location.origin).toString();
 
-/**
- * Adds a trailing slash to paths that look like pages (not files).
- * /page      → /page/
- * /page/     → /page/   (unchanged)
- * /style.css → /style.css (unchanged, has extension)
- * /          → /         (unchanged)
- */
-function normalizePath(pathname) {
-  if (pathname === "/") return pathname;
-  if (pathname.endsWith("/")) return pathname;
-  // If the last segment has a dot, treat it as a file — don't add slash
-  const lastSegment = pathname.split("/").pop();
-  if (lastSegment && lastSegment.includes(".")) return pathname;
-  return pathname + "/";
+function hasExtension(pathname) {
+  const lastSegment = pathname.split("/").filter(Boolean).pop() || "";
+  return lastSegment.includes(".");
 }
 
 /**
  * Returns the version of the path with the slash toggled.
- * /page → /page/  |  /page/ → /page
+ * /page -> /page/
+ * /page/ -> /page
  */
 function getAltPath(pathname) {
   if (pathname === "/" || pathname === "") return null;
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname + "/";
+}
+
+/**
+ * For navigation requests, try common equivalent URL forms.
+ * Examples:
+ *   /versions       -> /versions, /versions/, /versions.html, /versions.html/
+ *   /versions/      -> /versions/, /versions, /versions.html, /versions.html/
+ *   /versions.html  -> /versions.html, /versions.html/, /versions, /versions/
+ *   /versions.html/ -> /versions.html/, /versions.html, /versions, /versions/
+ */
+function getNavigationCandidatePaths(pathname) {
+  const out = [];
+  const add = (p) => {
+    if (p && !out.includes(p)) out.push(p);
+  };
+
+  add(pathname);
+
+  if (pathname === "/") return out;
+
+  if (/\.html\/$/i.test(pathname)) {
+    const htmlPath = pathname.slice(0, -1);
+    const noHtml = htmlPath.replace(/\.html$/i, "");
+    add(htmlPath);
+    add(noHtml);
+    add(noHtml + "/");
+    return out;
+  }
+
+  if (/\.html$/i.test(pathname)) {
+    const noHtml = pathname.replace(/\.html$/i, "");
+    add(pathname + "/");
+    add(noHtml);
+    add(noHtml + "/");
+    return out;
+  }
+
+  if (pathname.endsWith("/")) {
+    const base = pathname.slice(0, -1);
+    add(base);
+    if (!hasExtension(base)) {
+      add(base + ".html");
+      add(base + ".html/");
+    }
+    return out;
+  }
+
+  if (!hasExtension(pathname)) {
+    add(pathname + "/");
+    add(pathname + ".html");
+    add(pathname + ".html/");
+  }
+
+  return out;
+}
+
+function getNavigationCandidateUrls(url) {
+  return getNavigationCandidatePaths(url.pathname).map(
+    (pathname) => url.origin + pathname + url.search
+  );
 }
 
 async function precacheAppShell() {
@@ -72,7 +122,7 @@ async function precacheAppShell() {
 
       const alt = getAltPath(path);
       if (alt) {
-        await cache.put(abs(alt), response.clone());
+        await cache.put(abs(alt), Response.redirect(abs(path), 308));
       }
     } catch (err) {
       console.warn("Precache failed for", path, err);
@@ -101,44 +151,84 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+async function cacheResolvedNavigation(cache, attemptedUrls, finalUrl, response) {
+  const writes = [cache.put(finalUrl, response.clone())];
+
+  for (const attemptedUrl of attemptedUrls) {
+    if (attemptedUrl !== finalUrl) {
+      writes.push(cache.put(attemptedUrl, Response.redirect(finalUrl, 308)));
+    }
+  }
+
+  await Promise.allSettled(writes);
+}
+
 async function handleNavigation(request) {
   const url = new URL(request.url);
-  const normalizedPath = normalizePath(url.pathname);
-
-  if (url.pathname !== normalizedPath) {
-    return Response.redirect(url.origin + normalizedPath + url.search, 308);
-  }
-
   const cache = await caches.open(CACHE_NAME);
+  const candidates = getNavigationCandidateUrls(url);
 
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      await cache.put(request, response.clone());
+  let firstFailure = null;
+  const attempted = [];
+
+  for (const candidateUrl of candidates) {
+    attempted.push(candidateUrl);
+
+    try {
+      const response = await fetch(candidateUrl, {
+        credentials: "same-origin",
+        redirect: "follow",
+      });
+
+      if (!response.ok) {
+        if (!firstFailure) firstFailure = response;
+        continue;
+      }
+
+      const finalUrl = response.url || candidateUrl;
+
+      await cacheResolvedNavigation(cache, attempted, finalUrl, response);
+
+      if (finalUrl !== request.url) {
+        return Response.redirect(finalUrl, 308);
+      }
+
+      return response;
+    } catch {
+      // Try the next candidate
     }
-    return response;
-  } catch {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-
-    return new Response(OFFLINE_HTML, {
-      status: 200,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
-    });
   }
+
+  // Offline/cache fallback
+  for (const candidateUrl of candidates) {
+    const cached = await cache.match(candidateUrl);
+    if (!cached) continue;
+
+    if (candidateUrl !== request.url) {
+      return Response.redirect(candidateUrl, 308);
+    }
+
+    return cached;
+  }
+
+  if (firstFailure) return firstFailure;
+
+  return new Response(OFFLINE_HTML, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=UTF-8" },
+  });
 }
 
 async function handleSameOriginAsset(request, event) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
 
-  const networkFetch = fetch(request, { cache: "no-cache" })
-    .then(async (response) => {
-      if (response && response.ok) {
-        await cache.put(request, response.clone());
-      }
-      return response;
-    });
+  const networkFetch = fetch(request, { cache: "no-cache" }).then(async (response) => {
+    if (response && response.ok) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  });
 
   if (cached) {
     event.waitUntil(networkFetch.catch(() => {}));
