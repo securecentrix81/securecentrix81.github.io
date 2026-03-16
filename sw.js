@@ -32,8 +32,24 @@ const OFFLINE_HTML = `
 const abs = (path) => new URL(path, self.location.origin).toString();
 
 /**
+ * Adds a trailing slash to paths that look like pages (not files).
+ * /page      → /page/
+ * /page/     → /page/   (unchanged)
+ * /style.css → /style.css (unchanged, has extension)
+ * /          → /         (unchanged)
+ */
+function normalizePath(pathname) {
+  if (pathname === "/") return pathname;
+  if (pathname.endsWith("/")) return pathname;
+  // If the last segment has a dot, treat it as a file — don't add slash
+  const lastSegment = pathname.split("/").pop();
+  if (lastSegment && lastSegment.includes(".")) return pathname;
+  return pathname + "/";
+}
+
+/**
  * Returns the version of the path with the slash toggled.
- * Example: /page -> /page/  OR  /page/ -> /page
+ * /page → /page/  |  /page/ → /page
  */
 function getAltPath(pathname) {
   if (pathname === "/" || pathname === "") return null;
@@ -52,10 +68,8 @@ async function precacheAppShell() {
 
       if (!response.ok) continue;
 
-      // Cache the version provided in the list
       await cache.put(abs(path), response.clone());
 
-      // Dynamically cache the alternate slash version (e.g., if list has /page/, cache /page too)
       const alt = getAltPath(path);
       if (alt) {
         await cache.put(abs(alt), response.clone());
@@ -90,29 +104,36 @@ self.addEventListener("activate", (event) => {
 async function handleNavigation(request) {
   const cache = await caches.open(CACHE_NAME);
   const url = new URL(request.url);
+
   const originalPath = url.pathname;
+  const normalizedPath = normalizePath(originalPath);
   const altPath = getAltPath(originalPath);
 
   try {
-    // Network first
-    const response = await fetch(request, {
+    // Always fetch the normalized (slash-appended) version to avoid redirect issues
+    const response = await fetch(new Request(abs(normalizedPath), {
       cache: "no-cache",
       redirect: "follow",
-    });
+    }));
 
     if (response.ok) {
-      await cache.put(abs(originalPath), response.clone());
-      // If we're on /page, update the cache for /page/ as well
-      if (altPath) {
-        await cache.put(abs(altPath), response.clone());
+      // Cache the normalized version
+      await cache.put(abs(normalizedPath), response.clone());
+
+      // Also cache the original (slashless) version so both work offline
+      if (originalPath !== normalizedPath) {
+        await cache.put(abs(originalPath), response.clone());
       }
+
       return response;
     }
-    throw new Error("Offline or error");
+
+    throw new Error("Network response not ok");
   } catch (err) {
-    // OFFLINE: Try original path first, then try the toggled slash version
-    const cachedResponse = 
-      await cache.match(abs(originalPath)) || 
+    // Offline fallback — try all path variations
+    const cachedResponse =
+      (await cache.match(abs(originalPath))) ||
+      (await cache.match(abs(normalizedPath))) ||
       (altPath ? await cache.match(abs(altPath)) : null);
 
     if (cachedResponse) return cachedResponse;
